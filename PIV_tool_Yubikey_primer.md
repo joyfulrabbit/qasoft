@@ -1,7 +1,7 @@
 # Importing existing keys into a PIV slot on a yubikey:
 (examples from OSX)
 
-Follow the directions to get PIV-AGENT working https://github.com/arekinath/piv-agent
+Follow the directions to get PIV-AGENT working https://github.com/arekinath/pivy
 
 Download and Install [yubikey-manager](https://www.yubico.com/products/services-software/download/yubikey-manager/). I tried and failed to install certs via ykman command line too . I -had- to use the gui. If you generate keys using openssl the cli will most likely work. If you generated your keys with ssh-keygen like I did (and not open ssl) the certs won't import via command line.
 
