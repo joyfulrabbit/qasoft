@@ -1,0 +1,120 @@
+#!/bin/bash
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Copyright (c) 2018, Joyent, Inc.
+#
+
+#
+# Create a JIRA issue (on the  OS project) for cutting a release.
+# Note that this does *not* watch for duplicates.
+#
+
+if [ "$TRACE" != "" ]; then
+    export PS4='${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+    set -o xtrace
+fi
+set -o errexit
+set -o pipefail
+
+
+#---- support stuff
+
+function fatal
+{
+    echo "$0: fatal error: $*" >&2
+    trap - EXIT
+    exit 1
+}
+
+function errexit
+{
+    [[ $1 -ne 0 ]] || exit 0
+    fatal "error exit status $1"
+}
+
+function usage () {
+    echo "Usage:"
+    echo "    os-create-release-issue [OPTIONS...] JIRA-VERSION"
+    echo ""
+    echo "Options:"
+    echo "    -h        Print this usage and exit."
+    echo "    -n        Do a dry-run."
+    echo ""
+    echo "Create a JIRA issue in the OS project for the given release."
+    echo "'JIRA-VERSION' is the name of an existing JIRA version in the OS"
+    echo "project, e.g. '2018-01-18 Junon'."
+    echo ""
+    echo "Dependencies:"
+    echo "- 'jirash' >=2.7.0 must be setup (https://github.com/trentm/jirash)"
+    echo "- 'json' must be installed and on the PATH"
+}
+
+#---- mainline
+
+trap 'errexit $?' EXIT
+
+# Options.
+opt_dryrun=0
+while getopts "hn" opt
+do
+    case "$opt" in
+        h)
+            usage
+            exit 0
+            ;;
+        n)
+            opt_dryrun=1
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+# Validate JIRA release version name.
+jiraVersionName="$1"
+[[ -n "$jiraVersionName" ]] || fatal "missing JIRA-VERSION arg"
+if [[ "$(echo "$jiraVersionName" | grep -e '^\d\d\d\d-\d\d-\d\d ')" != "$jiraVersionName" ]]; then
+    fatal "JIRA-VERSION is not a OS release version ('YYYY-MM-DD NAME')"
+fi
+
+# TODO: Eventually if `jirash` grows a query command to search given JQL,
+# it would be nice to check if there is already an issue with "release"
+# and "$jiraVersionName" in the summary, and abort if so.
+
+# Ensure this is an existing version.
+versionInfo=$(jirash version get OS "$jiraVersionName")
+
+# Create it.
+releaseBranch=release-$(echo "$jiraVersionName" | cut -d' ' -f1 | sed -e 's/-//g')
+dryRunOpt=
+if [[ $opt_dryrun == 1 ]]; then
+    dryRunOpt="--dry-run"
+fi
+jirash issue create $dryRunOpt -E -f - OS <<EOM
+{
+    "project": {
+        "key": "OS"
+    },
+    "summary": "cut $releaseBranch \"$jiraVersionName\"",
+    "description": "branch: $releaseBranch\nrelease docs: https://mo.joyent.com/docs/engdoc/master/sdcrelease/index.html\n",
+    "components": [
+        {
+            "name": "release"
+        }
+    ],
+    "issuetype": {
+        "name": "Task"
+    },
+    "customfield_10070": [
+        {
+            "name": "$jiraVersionName"
+        }
+    ]
+}
+EOM
